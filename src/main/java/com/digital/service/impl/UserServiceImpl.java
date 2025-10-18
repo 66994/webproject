@@ -11,18 +11,22 @@ import com.digital.exception.BusinessException;
 import com.digital.mapper.UserMapper;
 import com.digital.model.dto.user.UserQueryRequest;
 import com.digital.model.entity.User;
+import com.digital.model.entity.VerificationCode;
 import com.digital.model.enums.UserRoleEnum;
 import com.digital.model.vo.LoginUserVO;
 import com.digital.model.vo.UserVO;
 import com.digital.service.UserService;
+import com.digital.service.VerificationCodeService;
+import com.digital.utils.AccountUtils;
+import com.digital.utils.CaptchaUtils;
 import com.digital.utils.SqlUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import me.chanjar.weixin.common.bean.WxOAuth2UserInfo;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -37,13 +41,16 @@ import org.springframework.util.DigestUtils;
 @Slf4j
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
 
+    @Resource
+    private VerificationCodeService verificationCodeService;
+
     /**
      * 盐值，混淆密码
      */
     public static final String SALT = "shane";
 
     @Override
-    public long userRegister(String userAccount, String userPassword, String checkPassword) {
+    public long userRegister(String userAccount, String userPassword, String checkPassword, String code, String captcha,HttpServletRequest httpRequest) {
         // 1. 校验
         if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
@@ -58,10 +65,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (!userPassword.equals(checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的密码不一致");
         }
+        // 验证图形验证码
+        CaptchaUtils.validateCaptcha(httpRequest, captcha);
+        // 验证短信/邮箱验证码
+        verificationCodeService.validateCode(userAccount, code);
+        // 账号格式校验
+        String type = AccountUtils.getAccountType(userAccount);
         synchronized (userAccount.intern()) {
             // 账户不能重复
             QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-            queryWrapper.eq("userAccount", userAccount);
+            if (VerificationCode.TYPE_PHONE.equals(type)) {
+                queryWrapper.eq("userPhone", userAccount);
+            } else {
+                queryWrapper.eq("userEmail", userAccount);
+            }
             long count = this.baseMapper.selectCount(queryWrapper);
             if (count > 0) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
@@ -72,6 +89,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             User user = new User();
             user.setUserAccount(userAccount);
             user.setUserPassword(encryptPassword);
+            if (VerificationCode.TYPE_PHONE.equals(type)) {
+                user.setUserPhone(userAccount);
+            } else {
+                user.setUserEmail(userAccount);
+            }
             boolean saveResult = this.save(user);
             if (!saveResult) {
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
@@ -110,35 +132,59 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
-    public LoginUserVO userLoginByMpOpen(WxOAuth2UserInfo wxOAuth2UserInfo, HttpServletRequest request) {
-        String unionId = wxOAuth2UserInfo.getUnionId();
-        String mpOpenId = wxOAuth2UserInfo.getOpenid();
-        // 单机锁
-        synchronized (unionId.intern()) {
-            // 查询用户是否已存在
-            QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-            queryWrapper.eq("unionId", unionId);
-            User user = this.getOne(queryWrapper);
-            // 被封号，禁止登录
-            if (user != null && UserRoleEnum.BAN.getValue().equals(user.getUserRole())) {
-                throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "该用户已被封，禁止登录");
-            }
-            // 用户不存在则创建
-            if (user == null) {
-                user = new User();
-                user.setUnionId(unionId);
-                user.setMpOpenId(mpOpenId);
-                user.setUserAvatar(wxOAuth2UserInfo.getHeadImgUrl());
-                user.setUserName(wxOAuth2UserInfo.getNickname());
-                boolean result = this.save(user);
-                if (!result) {
-                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "登录失败");
-                }
-            }
-            // 记录用户的登录态
-            request.getSession().setAttribute(USER_LOGIN_STATE, user);
-            return getLoginUserVO(user);
+    public LoginUserVO loginByAccountAndPassword(String account, String password, String captcha, HttpServletRequest request) {
+        // 验证图形验证码
+        CaptchaUtils.validateCaptcha(request, captcha);
+
+        // 账号格式校验
+        String type = AccountUtils.getAccountType(account);
+
+        // 查询用户
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        if (VerificationCode.TYPE_PHONE.equals(type)) {
+            queryWrapper.eq("userPhone", account);
+        } else {
+            queryWrapper.eq("userEmail", account);
         }
+        User user = this.getOne(queryWrapper);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在");
+        }
+
+        // 验证密码
+        String encryptPassword = DigestUtils.md5DigestAsHex((SALT + password).getBytes());
+        if (!encryptPassword.equals(user.getUserPassword())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码错误");
+        }
+        // 记录登录态
+        request.getSession().setAttribute(USER_LOGIN_STATE, user);
+        return getLoginUserVO(user);
+    }
+
+    @Override
+    public LoginUserVO loginByAccountAndCode(String account, String code, String captcha, HttpServletRequest request) {
+        // 验证图形验证码
+        CaptchaUtils.validateCaptcha(request, captcha);
+
+        // 验证验证码
+        verificationCodeService.validateCode(account, code);
+
+        // 查询用户
+        String type = AccountUtils.getAccountType(account);
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        if (VerificationCode.TYPE_PHONE.equals(type)) {
+            queryWrapper.eq("userPhone", account);
+        } else {
+            queryWrapper.eq("userEmail", account);
+        }
+        User user = this.getOne(queryWrapper);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在");
+        }
+
+        // 记录登录态
+        request.getSession().setAttribute(USER_LOGIN_STATE, user);
+        return getLoginUserVO(user);
     }
 
     /**

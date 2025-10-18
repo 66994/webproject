@@ -1,5 +1,6 @@
 package com.digital.controller;
 
+import cn.hutool.captcha.LineCaptcha;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.digital.annotation.AuthCheck;
 import com.digital.common.BaseResponse;
@@ -10,26 +11,21 @@ import com.digital.config.WxOpenConfig;
 import com.digital.constant.UserConstant;
 import com.digital.exception.BusinessException;
 import com.digital.exception.ThrowUtils;
-import com.digital.model.dto.user.UserAddRequest;
-import com.digital.model.dto.user.UserLoginRequest;
-import com.digital.model.dto.user.UserQueryRequest;
-import com.digital.model.dto.user.UserRegisterRequest;
-import com.digital.model.dto.user.UserUpdateMyRequest;
-import com.digital.model.dto.user.UserUpdateRequest;
+import com.digital.model.dto.user.*;
 import com.digital.model.entity.User;
 import com.digital.model.vo.LoginUserVO;
 import com.digital.model.vo.UserVO;
 import com.digital.service.UserService;
 
+import java.io.IOException;
 import java.util.List;
 
+import com.digital.service.VerificationCodeService;
+import com.digital.utils.CaptchaUtils;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
-import me.chanjar.weixin.common.bean.WxOAuth2UserInfo;
-import me.chanjar.weixin.common.bean.oauth2.WxOAuth2AccessToken;
-import me.chanjar.weixin.mp.api.WxMpService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.util.DigestUtils;
@@ -57,6 +53,51 @@ public class UserController {
     @Resource
     private WxOpenConfig wxOpenConfig;
 
+    @Resource
+    private VerificationCodeService verificationCodeService;
+
+    /**
+     * 获取图形验证码
+     */
+    @GetMapping("/captcha")
+    public void getCaptcha(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        LineCaptcha captcha = CaptchaUtils.generateCaptcha(request);
+        captcha.write(response.getOutputStream());
+    }
+
+    /**
+     * 发送验证码（手机/邮箱）
+     */
+    @PostMapping("/sendCode")
+    public BaseResponse<Boolean> sendCode(@RequestParam String account) {
+        verificationCodeService.sendCode(account);
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 账号密码登录
+     */
+    @PostMapping("/login/account")
+    public BaseResponse<LoginUserVO> loginByAccount(@RequestBody AccountPasswordLoginRequest request, HttpServletRequest httpRequest) {
+        String account = request.getAccount();
+        String password = request.getPassword();
+        String captcha = request.getCaptcha();
+        LoginUserVO loginUserVO = userService.loginByAccountAndPassword(account, password, captcha, httpRequest);
+        return ResultUtils.success(loginUserVO);
+    }
+
+    /**
+     * 验证码登录
+     */
+    @PostMapping("/login/code")
+    public BaseResponse<LoginUserVO> loginByCode(@RequestBody CodeLoginRequest request, HttpServletRequest httpRequest) {
+        String account = request.getAccount();
+        String code = request.getCode();
+        String captcha = request.getCaptcha();
+        LoginUserVO loginUserVO = userService.loginByAccountAndCode(account, code, captcha, httpRequest);
+        return ResultUtils.success(loginUserVO);
+    }
+
     // region 登录相关
 
     /**
@@ -66,17 +107,19 @@ public class UserController {
      * @return
      */
     @PostMapping("/register")
-    public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
+    public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest, HttpServletRequest httpRequest) {
         if (userRegisterRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        String userAccount = userRegisterRequest.getUserAccount();
+        String userAccount = userRegisterRequest.getUserAccount(); // 手机号/邮箱
         String userPassword = userRegisterRequest.getUserPassword();
         String checkPassword = userRegisterRequest.getCheckPassword();
-        if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
+        String code = userRegisterRequest.getCode();
+        String captcha = userRegisterRequest.getCaptcha();
+        if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword, code, captcha)) {
             return null;
         }
-        long result = userService.userRegister(userAccount, userPassword, checkPassword);
+        long result = userService.userRegister(userAccount, userPassword, checkPassword, code, captcha, httpRequest);
         return ResultUtils.success(result);
     }
 
@@ -99,29 +142,6 @@ public class UserController {
         }
         LoginUserVO loginUserVO = userService.userLogin(userAccount, userPassword, request);
         return ResultUtils.success(loginUserVO);
-    }
-
-    /**
-     * 用户登录（微信开放平台）
-     */
-    @GetMapping("/login/wx_open")
-    public BaseResponse<LoginUserVO> userLoginByWxOpen(HttpServletRequest request, HttpServletResponse response,
-            @RequestParam("code") String code) {
-        WxOAuth2AccessToken accessToken;
-        try {
-            WxMpService wxService = wxOpenConfig.getWxMpService();
-            accessToken = wxService.getOAuth2Service().getAccessToken(code);
-            WxOAuth2UserInfo userInfo = wxService.getOAuth2Service().getUserInfo(accessToken, code);
-            String unionId = userInfo.getUnionId();
-            String mpOpenId = userInfo.getOpenid();
-            if (StringUtils.isAnyBlank(unionId, mpOpenId)) {
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "登录失败，系统错误");
-            }
-            return ResultUtils.success(userService.userLoginByMpOpen(userInfo, request));
-        } catch (Exception e) {
-            log.error("userLoginByWxOpen error", e);
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "登录失败，系统错误");
-        }
     }
 
     /**
@@ -206,7 +226,7 @@ public class UserController {
     @PostMapping("/update")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updateUser(@RequestBody UserUpdateRequest userUpdateRequest,
-            HttpServletRequest request) {
+                                            HttpServletRequest request) {
         if (userUpdateRequest == null || userUpdateRequest.getId() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -259,7 +279,7 @@ public class UserController {
     @PostMapping("/list/page")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Page<User>> listUserByPage(@RequestBody UserQueryRequest userQueryRequest,
-            HttpServletRequest request) {
+                                                   HttpServletRequest request) {
         long current = userQueryRequest.getCurrent();
         long size = userQueryRequest.getPageSize();
         Page<User> userPage = userService.page(new Page<>(current, size),
@@ -276,7 +296,7 @@ public class UserController {
      */
     @PostMapping("/list/page/vo")
     public BaseResponse<Page<UserVO>> listUserVOByPage(@RequestBody UserQueryRequest userQueryRequest,
-            HttpServletRequest request) {
+                                                       HttpServletRequest request) {
         if (userQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -303,7 +323,7 @@ public class UserController {
      */
     @PostMapping("/update/my")
     public BaseResponse<Boolean> updateMyUser(@RequestBody UserUpdateMyRequest userUpdateMyRequest,
-            HttpServletRequest request) {
+                                              HttpServletRequest request) {
         if (userUpdateMyRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }

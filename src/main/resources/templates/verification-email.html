@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数字大学生平台 - 验证码</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 30px;
+            text-align: center;
+            color: white;
+            position: relative;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="50" cy="10" r="0.5" fill="white" opacity="0.1"/><circle cx="10" cy="60" r="0.5" fill="white" opacity="0.1"/><circle cx="90" cy="40" r="0.5" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+        }
+        
+        .logo {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .logo::before {
+            content: '🎓';
+            margin-right: 10px;
+            font-size: 36px;
+        }
+        
+        .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .content {
+            padding: 50px 30px;
+            text-align: center;
+        }
+        
+        .greeting {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .message {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 40px;
+        }
+        
+        .verification-code {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 36px;
+            font-weight: bold;
+            padding: 20px 40px;
+            border-radius: 15px;
+            display: inline-block;
+            margin: 20px 0;
+            letter-spacing: 8px;
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .verification-code::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+            transform: rotate(45deg);
+            animation: shine 3s infinite;
+        }
+        
+        @keyframes shine {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            50% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+            100% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 30px 0;
+            color: #856404;
+        }
+        
+        .warning-icon {
+            font-size: 20px;
+            margin-right: 10px;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            color: #666;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .footer-logo {
+            font-size: 20px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .copyright {
+            font-size: 14px;
+            color: #999;
+            margin-top: 15px;
+        }
+        
+        .social-links {
+            margin: 20px 0;
+        }
+        
+        .social-links a {
+            display: inline-block;
+            margin: 0 10px;
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .social-links a:hover {
+            color: #764ba2;
+        }
+        
+        .divider {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #667eea, transparent);
+            margin: 30px 0;
+        }
+        
+        @media (max-width: 600px) {
+            .email-container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .header, .content, .footer {
+                padding: 30px 20px;
+            }
+            
+            .verification-code {
+                font-size: 28px;
+                padding: 15px 30px;
+                letter-spacing: 6px;
+            }
+            
+            .greeting {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- 头部 -->
+        <div class="header">
+            <div class="logo">数字大学生平台</div>
+            <div class="subtitle">Digital College Students Platform</div>
+        </div>
+        
+        <!-- 内容 -->
+        <div class="content">
+            <div class="greeting">您好！</div>
+            
+            <div class="verification-code">{{VERIFICATION_CODE}}</div>
+            
+            <div class="warning">
+                <span class="warning-icon">⚠️</span>
+                <strong>安全提醒：</strong>
+                <ul style="text-align: left; margin-top: 10px; padding-left: 20px;">
+                    <li>此验证码10分钟内有效，请及时使用</li>
+                    <li>请勿将验证码泄露给他人</li>
+                    <li>如非本人操作，请忽略此邮件</li>
+                </ul>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <div style="color: #666; font-size: 14px;">
+                如有疑问，请联系我们的客服团队<br>
+                感谢您选择数字大学生平台！
+            </div>
+        </div>
+        
+        <!-- 底部 -->
+        <div class="footer">
+            <div class="footer-logo">🎓 数字大学生平台</div>
+            <div>让学习更智能，让成长更精彩</div>
+            
+            <div class="social-links">
+                <a href="#">官方网站</a>
+                <a href="#">帮助中心</a>
+                <a href="#">联系我们</a>
+            </div>
+            
+            <div class="copyright">
+                © 2025 数字大学生平台. All rights reserved.<br>
+                <strong>CopyRight：Shane</strong>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
