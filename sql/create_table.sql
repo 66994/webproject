@@ -23,6 +23,20 @@ create table if not exists user
     isDelete     tinyint      default 0                 not null comment '是否删除'
 ) comment '用户表' collate = utf8mb4_unicode_ci;
 
+-- 验证码表
+create table if not exists verification_code
+(
+    id           bigint auto_increment comment 'id' primary key,
+    account      varchar(256)                           not null comment '手机号/邮箱',
+    code         varchar(6)                             not null comment '验证码',
+    type         varchar(10)                            not null comment '类型：PHONE/EMAIL',
+    status       tinyint      default 0                 not null comment '状态：0-未使用 1-已使用',
+    expireTime   datetime                               not null comment '过期时间',
+    createTime   datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime   datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete     tinyint      default 0                 not null comment '是否删除'
+) comment '验证码表' collate = utf8mb4_unicode_ci;
+
 -- 帖子表
 create table if not exists post
 (
