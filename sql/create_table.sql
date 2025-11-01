@@ -76,3 +76,24 @@ create table if not exists post_favour
     index idx_postId (postId),
     index idx_userId (userId)
 ) comment '帖子收藏';
+
+-- BOSS直聘招聘信息表
+create table if not exists job_info
+(
+    id           bigint auto_increment comment 'id' primary key,
+    url          varchar(1024)                          null comment '招聘链接',
+    workName     varchar(256)                          null comment '工作名称',
+    workSalary   varchar(128)                           null comment '薪水',
+    workAddress  varchar(512)                          null comment '工作地址',
+    workContent  text                                   null comment '工作内容',
+    workYear     varchar(128)                           null comment '要求工作年限',
+    graduate     varchar(128)                           null comment '学历要求',
+    hrTime       varchar(128)                           null comment '招聘人什么时候活跃',
+    companyName  varchar(256)                          null comment '公司名',
+    createTime   datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime   datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete     tinyint      default 0                 not null comment '是否删除',
+    index idx_url (url(255)),
+    index idx_companyName (companyName),
+    index idx_createTime (createTime)
+) comment 'BOSS直聘招聘信息表' collate = utf8mb4_unicode_ci;

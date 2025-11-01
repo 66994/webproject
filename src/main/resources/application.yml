@@ -15,7 +15,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/digital_college_students_backend
     username: root
-    password: 12345678
+    password: Jkm20040716.
   # 邮件配置
   mail:
     host: smtp.163.com
